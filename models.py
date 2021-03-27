@@ -113,6 +113,9 @@ class Seq2SeqSemanticParser(nn.Module):
         print("enc_final_states_reshaped[0] size" + str(enc_final_states_reshaped[0].size()))
         print("enc_final_states_reshaped[1] size" + str(enc_final_states_reshaped[1].size()))
     
+    
+        # initalize with [1] or "start of sentence" token 
+        
         decoder_input = torch.tensor([[1]], device=device)
         decoder_hidden_all = enc_final_states_reshaped[1]
         
@@ -123,11 +126,24 @@ class Seq2SeqSemanticParser(nn.Module):
         batch_loss = 0
         for batch_num in range(batch_size):
             sentence_loss = 0
+            one_batch_ex = decoder_hidden_all[0,batch_num].view(1,1,-1)
+            counter = 0
             for seq in range(output_length):
-                one_batch_ex = decoder_hidden_all[0,batch_size]
+                print( " bat_num " + str(batch_num) + "seq number is : " + str(seq))
+                decoder_hidden = one_batch_ex
+                print("decoder hidden size is " + str(decoder_hidden))
+                decoder_output, decoder_hidden = self.decoder.forward(decoder_input, decoder_hidden)
                 
-                decoder_output, decoder_hidden = self.decoder.forward(decoder_input, torch.unsqueeze(decoder_hidden[batch_num]))
-                sentence_loss+= self.criterion(decoder_output, y_tensor[batch_num][seq])
+                step_label = torch.unsqueeze(y_tensor[batch_num][seq], dim = 0)
+                
+                print("step label is " + str(step_label.size()) + "step label is " + str(step_label))
+                print("decoder_output  and type is  " + str(type(decoder_output)) + str(decoder_output) )
+                
+                
+                
+                seq_loss =  self.criterion(decoder_output, step_label)
+                print( " seq_loss_type is " + str(type(seq_loss)))
+                sentence_loss+= seq_loss
             batch_loss += sentence_loss
                 
         batch_average_loss = batch_loss/batch_size    
@@ -302,13 +318,13 @@ class RNNDecoder(nn.Module):
         
     def forward(self, input, hidden):
         output = self.embedding(input).view(1,1,-1)
-        print("output 1 is " + str(output.size()))
+        #print("output 1 is " + str(output.size()))
         output = F.relu(output)
-        print("output 2 is " + str(output.size()))
-        print("hidden is " + str(hidden.size()))
+        #print("output 2 is " + str(output.size()))
+        #print("hidden is " + str(hidden.size()))
         
         output, hidden = self.gru(output, hidden)
-        print("output 3 is " + str(output.size()))
+        #print("output 3 is " + str(output.size()))
        
         output = self.softmax(self.out(output[0]))
         return output, hidden
@@ -387,7 +403,9 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
     epochs = 1 
     emb_dim = 5
     input_size = input_max_len
-    hidden_size = 4   # embeddings are relatively short
+    
+    hidden_size = 5   # this determines decoder output dimensions 
+    
     batch_size = 4
     bidirect = True
     output_size = output_max_len
@@ -416,7 +434,7 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
             #---------batch
             x_tensor = torch.zeros([batch_size,input_max_len],dtype = torch.int64)
             inp_lens_tensor = torch.zeros([batch_size],dtype = torch.int64)
-            y_tensor = torch.zeros([batch_size,output_max_len])
+            y_tensor = torch.zeros([batch_size,output_max_len],dtype = torch.int64)
             out_lens_tensor = torch.zeros([batch_size])
             
             #print("input_max_len is " + str(input_max_len))
@@ -427,7 +445,7 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
                
                x_tensor[i] = torch.from_numpy(all_train_input_data[idx+i])
                sent_length = torch.count_nonzero(x_tensor[i]).long()
-              # print (" sent_length type is " + str(type(sent_length)))
+               #print (" sent_length type is " + str(type(sent_length)))
                
                
                inp_lens_tensor[i] = sent_length
