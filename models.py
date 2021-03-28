@@ -107,11 +107,11 @@ class Seq2SeqSemanticParser(nn.Module):
         (enc_output_each_word, enc_context_mask, enc_final_states) = self.encoder.forward(input_emb, inp_lens_tensor)
         enc_final_states_reshaped = (enc_final_states[0].unsqueeze(0), enc_final_states[1].unsqueeze(0))
 
-        print("enc_output_each_word size" + str(enc_output_each_word.size()))
-        print("enc_context_mask size " + str(enc_context_mask.size()))
+        #print("enc_output_each_word size" + str(enc_output_each_word.size()))
+        #print("enc_context_mask size " + str(enc_context_mask.size()))
 
-        print("enc_final_states_reshaped[0] size" + str(enc_final_states_reshaped[0].size()))
-        print("enc_final_states_reshaped[1] size" + str(enc_final_states_reshaped[1].size()))
+        #print("enc_final_states_reshaped[0] size" + str(enc_final_states_reshaped[0].size()))
+        #print("enc_final_states_reshaped[1] size" + str(enc_final_states_reshaped[1].size()))
     
     
         # initalize with [1] or "start of sentence" token 
@@ -119,9 +119,9 @@ class Seq2SeqSemanticParser(nn.Module):
         decoder_input = torch.tensor([[1]], device=device)
         decoder_hidden_all = enc_final_states_reshaped[1]
         
-        print(" size of x tensor " + str(x_tensor.size()))
+        #print(" size of x tensor " + str(x_tensor.size()))
         batch_size, input_length = x_tensor.size()
-        print("batch size is " + str(batch_size))
+        #print("batch size is " + str(batch_size))
         bs, output_length = y_tensor.size()
         batch_loss = 0
         for batch_num in range(batch_size):
@@ -129,20 +129,20 @@ class Seq2SeqSemanticParser(nn.Module):
             one_batch_ex = decoder_hidden_all[0,batch_num].view(1,1,-1)
             counter = 0
             for seq in range(output_length):
-                print( " bat_num " + str(batch_num) + "seq number is : " + str(seq))
+                #print( " bat_num " + str(batch_num) + "seq number is : " + str(seq))
                 decoder_hidden = one_batch_ex
-                print("decoder hidden size is " + str(decoder_hidden))
+                #print("decoder hidden size is " + str(decoder_hidden))
                 decoder_output, decoder_hidden = self.decoder.forward(decoder_input, decoder_hidden)
                 
                 step_label = torch.unsqueeze(y_tensor[batch_num][seq], dim = 0)
                 
-                print("step label is " + str(step_label.size()) + "step label is " + str(step_label))
-                print("decoder_output  and type is  " + str(type(decoder_output)) + str(decoder_output) )
+                #print("step label is " + str(step_label.size()) + "step label is " + str(step_label))
+                #print("decoder_output  and type is  " + str(type(decoder_output)) + str(decoder_output) )
                 
                 
                 
                 seq_loss =  self.criterion(decoder_output, step_label)
-                print( " seq_loss_type is " + str(type(seq_loss)))
+                #print( " seq_loss_type is " + str(type(seq_loss)))
                 sentence_loss+= seq_loss
             batch_loss += sentence_loss
                 
@@ -160,7 +160,7 @@ class Seq2SeqSemanticParser(nn.Module):
         
         
         
-        raise Exception("implement me!")
+        #raise Exception("implement me!")
 
     def decode(self, test_data: List[Example]) -> List[List[Derivation]]:
         
@@ -283,7 +283,7 @@ class RNNEncoder(nn.Module):
         output, hn = self.rnn(packed_embedding)
         # Unpacks the Pytorch representation into normal tensors
         output, sent_lens = nn.utils.rnn.pad_packed_sequence(output)
-        max_length = input_lens.data[0].item()
+        max_length = input_lens.max().item()
         context_mask = self.sent_lens_to_mask(sent_lens, max_length)
 
         # Grabs the encoded representations out of hn, which is a weird tuple thing.
@@ -404,7 +404,7 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
     emb_dim = 5
     input_size = input_max_len
     
-    hidden_size = 5   # this determines decoder output dimensions 
+    hidden_size =  len(output_indexer)  # this determines decoder output dimensions 
     
     batch_size = 4
     bidirect = True
@@ -413,6 +413,8 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
     full_dict_size_output = len(output_indexer)
     embedding_dropout_rate = 0.5
     
+    total_loss = 0.0
+
        
     model = Seq2SeqSemanticParser(input_indexer, output_indexer, emb_dim,output_size, hidden_size)
     optimizer_e = optim.Adam(model.encoder.parameters(),lr = learning_rate_e)
@@ -455,23 +457,17 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
                out_lens_tensor[i] = target_length
             
             
-            print("x_tensor is " + str(x_tensor) ) 
+            #print("x_tensor is " + str(x_tensor) ) 
             
            # print (" in lens tensor type is " + str(type(inp_lens_tensor[0])))
-            loss = model.forward(x_tensor, inp_lens_tensor, y_tensor, out_lens_tensor)
+            batch_loss = model.forward(x_tensor, inp_lens_tensor, y_tensor, out_lens_tensor)
             
-            print("batch size is " + str(batch_size))
-
-            print("enc_output_each_word size" + str(enc_output_each_word.size()))
-            print("enc_context_mask size " + str(enc_context_mask.size()))
-
-            print("enc_final_states_reshaped[0] size" + str(enc_final_states_reshaped[0].size()))
-            print("enc_final_states_reshaped[1] size" + str(enc_final_states_reshaped[1].size()))
+            batch_loss.backward()
             
-            input_length = len(x_tensor[0])
-            output_length = len(x_tensor[0])
+            total_loss += batch_loss
             
-            
+            optimizer_e.step()
+            optimizer_d.step()
                 
 
 
