@@ -116,7 +116,7 @@ class Seq2SeqSemanticParser(nn.Module):
     
         # initalize with [1] or "start of sentence" token 
         
-        decoder_input = torch.tensor([[1]], device=device)
+        
         decoder_hidden_all = enc_final_states_reshaped[1]
         
         #print(" size of x tensor " + str(x_tensor.size()))
@@ -126,26 +126,34 @@ class Seq2SeqSemanticParser(nn.Module):
         batch_loss = 0
         for batch_num in range(batch_size):
             sentence_loss = 0
+            
+            #hidden for one batch
             one_batch_ex = decoder_hidden_all[0,batch_num].view(1,1,-1)
             counter = 0
+            
+            #feed SOS token
+            decoder_input = torch.tensor([[1]], device=device)
+            
             for seq in range(output_length):
                 #print( " bat_num " + str(batch_num) + "seq number is : " + str(seq))
                 decoder_hidden = one_batch_ex
                 #print("decoder hidden size is " + str(decoder_hidden))
                 decoder_output, decoder_hidden = self.decoder.forward(decoder_input, decoder_hidden)
-                
                 step_label = torch.unsqueeze(y_tensor[batch_num][seq], dim = 0)
                 
                 #print("step label is " + str(step_label.size()) + "step label is " + str(step_label))
                 #print("decoder_output  and type is  " + str(type(decoder_output)) + str(decoder_output) )
-                
-                
-                
                 seq_loss =  self.criterion(decoder_output, step_label)
                 #print( " seq_loss_type is " + str(type(seq_loss)))
                 sentence_loss+= seq_loss
+                
+                # teacher force correct answer for input to next sequence
+                decoder_input = y_tensor[batch_num][seq] 
+                
             batch_loss += sentence_loss
                 
+        # why not loss.item()? will not transmit gradient info
+            
         batch_average_loss = batch_loss/batch_size    
         
         return batch_average_loss
@@ -153,21 +161,75 @@ class Seq2SeqSemanticParser(nn.Module):
         # use final weights from training, apply forward for inference
         
         # This should call both embedding layer, encoder fwd, decoder fwd, prob calc w/ gold labels (attn later)
-        
-        ### Encoder final states are he problem, size =  1,4,65. Need to adjust decoder network architecture somewhere else, or feed in one by on
-    # probably 1,4,65 because the encoder final starte is batched, maybe parsing this and feeding in 1 by 1 is an order?
-        
-        
-        
-        
+     
         #raise Exception("implement me!")
 
     def decode(self, test_data: List[Example]) -> List[List[Derivation]]:
         
         #Inference based on final weights 
+        derivations = []
         
+        input_max_len = np.max(np.asarray(([len(ex.x_indexed) for ex in test_data])))
+        all_test_input_data = make_padded_input_tensor(test_data, self.output_indexer,input_max_len, reverse_input = False)
+        
+        #print( " begin loop decode")
+        for ex_idx in range(len(test_data)):
+            
+            #forward pass using x tensor
+
+            sent_tensor= torch.from_numpy(all_test_input_data[ex_idx]).unsqueeze(0)
+            
+            one_len = torch.tensor([1], dtype = torch.int64)
+            one_len[0] = input_max_len
+            
+            #print( "sentence tensor size " + str(sent_tensor.size()))
+            tensor_embed = self.input_emb.forward(sent_tensor)
+            
+            
+            #print("size of one_len " + str(one_len.size()))
+            (enc_output_each_word, enc_context_mask, enc_final_states) = self.encoder.forward(tensor_embed, one_len)
+            enc_final_states_reshaped = (enc_final_states[0].unsqueeze(0), enc_final_states[1].unsqueeze(0))
+            
+            
+            decoder_hidden = enc_final_states_reshaped[1]
+            # <SOS>
+            decoder_input = torch.tensor([[1]], device=device)
+            
+            
+            prob_sentence = torch.zeros(1)
+            
+            y_toks = []
+            
+            for i in range(len(sent_tensor)):
+                decoder_output, decoder_hidden = self.decoder.forward(decoder_input,decoder_hidden)
+                
+                #find argmax
+                
+                pred_index = torch.argmax(decoder_output)
+                prob = torch.max(decoder_output)
+                
+                print("pred_index " + str(pred_index))
+                
+                token = self.output_indexer.get_object(pred_index)
+                
+                print("token is " + str(token))
+                y_toks.append(token)
+                
+                
+                
+                # is probability calculation conditional across timesteps?
+                
+                prob_sentence += prob
+                
+                #print( " one seq inference loop ")
+                
+            print("y_tokens " + str(y_toks))
+            print("prob_sentence is " + str(prob_sentence))
+                                  
+                # TOMORROW: continue derivation construction, debug decoding
+       
         #create list of Derivations for each sentence, iterate over all sentences 
-        raise Exception("implement me!")
+        #raise Exception("implement me!")
 
 
     def encode_input(self, x_tensor, inp_lens_tensor):
@@ -400,7 +462,7 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
         
     learning_rate_e = 0.001
     learning_rate_d = 0.001
-    epochs = 1 
+    epochs = 5
     emb_dim = 5
     input_size = input_max_len
     
@@ -469,6 +531,7 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
             optimizer_e.step()
             optimizer_d.step()
                 
+    return model     
 
 
 
@@ -479,8 +542,8 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
             
             
             
-            
-    raise Exception("I, don't want no bugs (to the tune of TLC 'No Scrubs' " )
+    
+    #raise Exception("I, don't want no bugs (to the tune of TLC 'No Scrubs' " )
     
  
                  
