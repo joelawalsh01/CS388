@@ -117,7 +117,7 @@ class Seq2SeqSemanticParser(nn.Module):
         # initalize with [1] or "start of sentence" token 
         
         
-        decoder_hidden_all = enc_final_states_reshaped[1]
+        decoder_hidden_all = enc_final_states_reshaped[0]
         
         #print(" size of x tensor " + str(x_tensor.size()))
         batch_size, input_length = x_tensor.size()
@@ -191,7 +191,7 @@ class Seq2SeqSemanticParser(nn.Module):
             enc_final_states_reshaped = (enc_final_states[0].unsqueeze(0), enc_final_states[1].unsqueeze(0))
             
             
-            decoder_hidden = enc_final_states_reshaped[1]
+            decoder_hidden = enc_final_states_reshaped[0]
             # <SOS>
             decoder_input = torch.tensor([[1]], device=device)
             
@@ -210,7 +210,7 @@ class Seq2SeqSemanticParser(nn.Module):
                 
                 print("pred_index " + str(pred_index))
                 
-                token = self.output_indexer.get_object(pred_index)
+                token = self.input_indexer.get_object(pred_index)
                 
                 print("token is " + str(token))
                 y_toks.append(token)
@@ -460,15 +460,15 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
     # First create a model. Then loop over epochs, loop over examples, and given some indexed words
     # call your seq-to-seq model, accumulate losses, update parameters
         
-    learning_rate_e = 0.001
-    learning_rate_d = 0.001
+    learning_rate_e = 0.0001
+    learning_rate_d = 0.0001
     epochs = 5
     emb_dim = 5
     input_size = input_max_len
     
     hidden_size =  len(output_indexer)  # this determines decoder output dimensions 
     
-    batch_size = 4
+    batch_size = 20
     bidirect = True
     output_size = output_max_len
     full_dict_size_input = len(input_indexer)
@@ -524,9 +524,15 @@ def train_model_encdec(train_data: List[Example], dev_data: List[Example], input
            # print (" in lens tensor type is " + str(type(inp_lens_tensor[0])))
             batch_loss = model.forward(x_tensor, inp_lens_tensor, y_tensor, out_lens_tensor)
             
-            batch_loss.backward()
+            clip_grad = 1
+            torch.nn.utils.clip_grad_norm_(model.encoder.parameters(), clip_grad )
             
-            total_loss += batch_loss
+            batch_loss.backward()
+            clip_grad = 1
+            torch.nn.utils.clip_grad_norm_(model.encoder.parameters(), clip_grad )
+            
+            print("batch loss " + str(batch_loss.item()))
+            total_loss += batch_loss.item()
             
             optimizer_e.step()
             optimizer_d.step()
